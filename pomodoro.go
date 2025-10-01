@@ -39,7 +39,7 @@ func prompt(prompt int) (int, int) {
 		case 4:
 			return -1, -1
 		case 5: // test
-			duration = 1 * 60
+			duration = 10
 			rest = 0.5 * 60
 		}
 		return duration, rest
@@ -54,59 +54,74 @@ func pomodoro() {
 	if duration == -1 || rest == -1 {
 		return
 	}
-	now := time.Now()
 	isBreak := false
-	// defer tick.Stop()
+	
 	done := make(chan struct{})
-	fmt.Println("Press 'q' to stop <<") 
+	fmt.Printf("Working on %v/%v schedule... Press 'q' to stop <<", duration, rest) 
 	go func(){
 		for {
-			tick := time.NewTicker(1 * time.Second)
-
 			greenBG := "\033[1;42m"
 			whiteTxt := "\033[97m"
 			reset := "\033[0m"
-
+			
+			now := time.Now()
+			tick := time.NewTicker(1 * time.Second)
+			
 			myWorkTime := duration
+			prompt := "Working timer: "
 			if isBreak {
 				myWorkTime = rest
+				prompt = "Resting timer: "
 			}
-			
-			for range myWorkTime {
-				t := <-tick.C
-				elapsed := t.Sub(now)
-				minutes := int(elapsed.Minutes())
-				seconds := int(elapsed.Seconds()) % 60
-				if myWorkTime > 60 {
-					if float64(minutes*60)/float64(myWorkTime) >= 0.76 {
-						greenBG = "\033[1;43m"
-					}else if float64(minutes*60)/float64(myWorkTime) >= 0.95 {
-						greenBG = "\033[1;91m"
-					}
-				}else if float64(seconds)/float64(myWorkTime) >= 0.8{
-					greenBG = "\033[1;43m"
+			OuterLoop:
+			for {
+				select {
+					case <-done:
+						fmt.Println("\nStopping timer...")
+						return
+					case t := <-tick.C:
+
+						elapsed := t.Sub(now)
+						minutes := int(elapsed.Minutes())
+						seconds := int(elapsed.Seconds()) % 60
+						if myWorkTime > 60 {
+							if float64(minutes*60)/float64(myWorkTime) >= 0.95 {
+								greenBG = "\033[1;41m"
+							}else if float64(minutes*60)/float64(myWorkTime) >= 0.75 {
+								greenBG = "\033[1;43m"
+							}
+						}else {
+							if float64(seconds)/float64(myWorkTime) >= 0.90 {
+								greenBG = "\033[1;41m"
+							}else if float64(seconds)/float64(myWorkTime) >= 0.76{
+								greenBG = "\033[1;43m"
+							}
+						}
+
+						fmt.Printf("\r\033[2K%s %s%v%02d:%02d %s", greenBG, whiteTxt, prompt, minutes, seconds, reset)
+						
+						totalWorkTime = int(elapsed.Seconds())
+
+						if int(elapsed.Seconds()) >= myWorkTime {
+							fmt.Println("\nTime's up! 🍅")
+							tick.Stop()
+							playAlarm()
+							isBreak = !isBreak
+							break OuterLoop
+						}
 				}
-				fmt.Printf("\r\033[2K%s %sPassed: %02d:%02d %s", greenBG, whiteTxt, minutes, seconds, reset)
-				
-				totalWorkTime += int(elapsed.Seconds())
 			}
-			fmt.Println("\nTime's up! 🍅")
-			tick.Stop()
-			playAlarm()
-			isBreak = !isBreak // negating to alternate
 		}
 	}()
-	fmt.Printf("\nPress 'q' to stop << ")
 	option := ""
-	// fmt.Printf("Press 'q' to stop << ")
+
 	fmt.Scan(&option)
 	if option == "q" {
 		close(done)
-	}
-	if option == "q" {
-		fmt.Printf("Nice session! Your total time was: %v minutes", totalWorkTime/60)
 		return
 	}
+	fmt.Printf("Nice session! Your total work time was: %v minutes\n", totalWorkTime/60)
+	
 }
 
 func playAlarm() {
